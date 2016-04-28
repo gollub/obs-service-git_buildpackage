@@ -51,5 +51,19 @@
     <allowedvalue>disable</allowedvalue>
   </parameter>
 
+  <parameter name="gitid">
+    <description>Append the Git-Id for this snapshot.  Default is 'enable'
+    </description>
+    <allowedvalue>enable</allowedvalue>
+    <allowedvalue>disable</allowedvalue>
+  </parameter>
+
+  <parameter name="giturl">
+    <description>Append the Git-Url for this snapshot.  Default is 'enable'
+    </description>
+    <allowedvalue>enable</allowedvalue>
+    <allowedvalue>disable</allowedvalue>
+  </parameter>
+
 </service>
 

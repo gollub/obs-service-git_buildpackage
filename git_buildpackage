@@ -129,20 +129,78 @@ def fetch_upstream(url, revision, out_dir):
     return clone_dir
 
 
-def create_source_package(repo_dir, output_dir, revision, build_args):
+def create_source_package(repo_dir, output_dir, revision, build_args, url,
+                          append_git_id, append_git_url):
     """Create source package via git-buildpackage"""
+    absoutput_dir = os.path.abspath(output_dir)
 
     if not revision:
         revision = 'master'
 
+    """ We are about to create a snapshot build from our git repo.
+        Make sure we record the git-id of the snapshot """
+    git_show_output = safe_run(['git', 'rev-parse', 'HEAD'],
+                               cwd=clone_dir,
+                               interactive=sys.stdout.isatty())
+    git_id = str(git_show_output[1]).rstrip('\n')
+
+    """ Do we want to add the GitId and GitUrl to package """
+    if append_git_id or append_git_url:
+        content = None
+
+        """ Open the Control file in the clone """
+        debian_dir = os.path.join(repo_dir, 'debian')
+        control_fname = os.path.join(debian_dir, 'control')
+        try:
+            control_file = open(control_fname, 'r')
+        except IOError:
+            logging.error('Error reading control file : \'' +
+                          control_fname + '\'')
+            sys.exit(0)
+        else:
+            with control_file:
+                content = control_file.readlines()
+                for i, line in enumerate(content):
+                    if line == '\r\n' or line == '\n':
+                        if append_git_id:
+                            content.insert(i, 'XBS-Git-Id: ' +
+                                           git_id + '\n')
+                            logging.info('Appending \'' + control_fname +
+                                         '\' with : \'XBS-Git-Id: ' +
+                                         git_id + '\'')
+                            i = i + 1
+                        if append_git_url:
+                            content.insert(i, 'XBS-Git-Url: ' +
+                                           url + '\n' )
+                            logging.info('Appending \'' + control_fname +
+                                         '\' with : \'XBS-Git-Url: ' +
+                                         url + '\'')
+                            i = i + 1
+                        break
+        if content:
+            """ Write new tags to control file in local clone """
+            try:
+                control_file = open(control_fname, 'w')
+            except IOError:
+                logging.error('Error writing to control file : \'' +
+                              control_fname + '\'')
+                sys.exit(0)
+            else:
+                with control_file:
+                    control_file.writelines(content)
+
+            """ Commit to local clone debian/control tag additions """
+            safe_run(['git', 'commit', '-a', '-m',
+                      'Add Git-Id/Git-Url to control'], cwd=repo_dir)
+
+    """ Prepare git buildpackage """
     command = ['git', 'buildpackage', '--git-notify=off', '--git-force-create']
 
 #   command.append('--git-verbose')
-
     # we are not on a proper local branch due to using git-reset but we anyway
     # use the --git-export option
-    command.extend(['--git-ignore-branch', "--git-export-dir=%s" % output_dir,
-                    "--git-export=%s" % revision])
+    command.extend(['--git-ignore-branch',
+                    "--git-export-dir=%s" % absoutput_dir])
 
     # create local pristine-tar branch
     try:
@@ -162,10 +220,9 @@ def create_source_package(repo_dir, output_dir, revision, build_args):
     # Since gbp is the "heart" of this service lets force interactive mode
     safe_run(command, cwd=repo_dir, interactive=True)
 
-
 def copy_source_package(input_dir, output_dir):
     """Copy Debian sources found in input_dir to output_dir."""
-
+    input_dir = os.path.abspath(input_dir)
     sources = safe_run(['dpkg-scansources', input_dir], cwd=input_dir)[1]
 
     FILES_PATTERN = re.compile(r'^Files:(.*(?:\n .*)+)', flags=re.MULTILINE)
@@ -223,7 +280,12 @@ if __name__ == '__main__':
     parser.add_argument('--dch-release-update', choices=['enable', 'disable'],
                         default='disable',
                         help='Append OBS release number')
-
+    parser.add_argument('--gitid', choices=['enable', 'disable'],
+                        default='enable',
+                        help='Append Git-Id')
+    parser.add_argument('--giturl', choices=['enable', 'disable'],
+                        default='enable',
+                        help='Append Git-URL')
     parser.add_argument('--verbose', '-v', action='store_true',
                         help='enable verbose output')
 
@@ -240,6 +302,16 @@ if __name__ == '__main__':
         args.dch_release_update = True
     else:
         args.dch_release_update = False
+
+    if args.gitid == 'enable':
+        args.gitid = True
+    else:
+        args.gitid = False
+
+    if args.giturl == 'enable':
+        args.giturl = True
+    else:
+        args.giturl = False
 
     #
     # real main
@@ -262,8 +334,10 @@ if __name__ == '__main__':
     revision = switch_revision(clone_dir, args.revision)
 
     # create_source_package
-    create_source_package(clone_dir, repodir, revision=revision,
-                          build_args=args.build_args)
+    create_source_package(clone_dir, args.outdir, revision=revision,
+                          build_args=args.build_args, url=args.url,
+                          append_git_id=args.gitid,
+                          append_git_url=args.giturl)
 
     # copy_source_package
     copy_source_package(repodir, args.outdir)
