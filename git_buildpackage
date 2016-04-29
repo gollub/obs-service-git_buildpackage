@@ -145,7 +145,11 @@ def create_source_package(repo_dir, output_dir, revision, build_args, url,
     git_id = str(git_show_output[1]).rstrip('\n')
 
     """ Do we want to add the GitId and GitUrl to package """
-    if append_git_id or append_git_url:
+    git_options = ['both', 'source', 'binary']
+    git_id_option_set = append_git_id in git_options
+    git_url_option_set = append_git_url in git_options
+
+    if git_id_option_set or git_url_option_set:
         content = None
 
         """ Open the Control file in the clone """
@@ -162,18 +166,34 @@ def create_source_package(repo_dir, output_dir, revision, build_args, url,
                 content = control_file.readlines()
                 for i, line in enumerate(content):
                     if line == '\r\n' or line == '\n':
-                        if append_git_id:
-                            content.insert(i, 'XBS-Git-Id: ' +
+                        if git_id_option_set:
+                            if append_git_id == 'both':
+                                x_string = 'XBS'
+                            elif append_git_id == 'source':
+                                x_string = 'XS'
+                            else:
+                                x_string = 'XB'
+
+                            content.insert(i, x_string + '-Git-Id: ' +
                                            git_id + '\n')
                             logging.info('Appending \'' + control_fname +
-                                         '\' with : \'XBS-Git-Id: ' +
-                                         git_id + '\'')
+                                         '\' with : \'' + x_string +
+                                         '-Git-Id: ' + git_id + '\'')
                             i = i + 1
-                        if append_git_url:
-                            content.insert(i, 'XBS-Git-Url: ' +
+
+                        if git_url_option_set:
+                            if append_git_url == 'both':
+                                x_string = 'XBS'
+                            elif append_git_url == 'source':
+                                x_string = 'XS'
+                            else:
+                                x_string = 'XB'
+
+                            content.insert(i, x_string + '-Git-Url: ' +
                                            url + '\n' )
                             logging.info('Appending \'' + control_fname +
-                                         '\' with : \'XBS-Git-Url: ' +
+                                         '\' with : \'' + x_string +
+                                         '-Git-Url: ' +
                                          url + '\'')
                             i = i + 1
                         break
@@ -280,11 +300,9 @@ if __name__ == '__main__':
     parser.add_argument('--dch-release-update', choices=['enable', 'disable'],
                         default='disable',
                         help='Append OBS release number')
-    parser.add_argument('--gitid', choices=['enable', 'disable'],
-                        default='enable',
+    parser.add_argument('--gitid', choices=['source', 'binary', 'both'],
                         help='Append Git-Id')
-    parser.add_argument('--giturl', choices=['enable', 'disable'],
-                        default='enable',
+    parser.add_argument('--giturl', choices=['source', 'binary', 'both'],
                         help='Append Git-URL')
     parser.add_argument('--verbose', '-v', action='store_true',
                         help='enable verbose output')
@@ -303,15 +321,15 @@ if __name__ == '__main__':
     else:
         args.dch_release_update = False
 
-    if args.gitid == 'enable':
-        args.gitid = True
-    else:
-        args.gitid = False
+    if not args.gitid in [None, 'source', 'binary', 'both']:
+        sys.exit('Error, config option \'gitid:\' has invalid argument \'' +
+                 str(args.gitid) +
+                 '\', valid options include [None, both, source, binary]')
 
-    if args.giturl == 'enable':
-        args.giturl = True
-    else:
-        args.giturl = False
+    if not args.giturl in [None, 'source', 'binary', 'both']:
+        sys.exit('Error, config option \'giturl:\' has invalid argument \'' +
+                 str(args.giturl) +
+                 '\', valid options include [None, both, source, binary]')
 
     #
     # real main
